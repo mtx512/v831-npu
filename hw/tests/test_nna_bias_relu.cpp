@@ -29,7 +29,7 @@
 #include "hw_adaptor.h"
 #include "mem_ctrl.h"
 
-#include "nna_common.h"
+#include "nna_hw.h"
 
 static void* gp_vaddr;
 static void* gp_paddr;

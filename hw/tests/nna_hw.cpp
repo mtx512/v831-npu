@@ -26,7 +26,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "nna_common.h"
+#include "nna_hw.h"
 
 #define NNA_BASE 0x2400000
 

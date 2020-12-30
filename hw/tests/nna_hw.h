@@ -18,7 +18,7 @@
  *
  */
 
-#ifndef NNA_COMMON_H
+#ifndef NNA_HW_H
 
 enum nna_cmds { nna_cmd_on, nna_cmd_off, nna_cmd_reset, nna_cmd_clk };
 
@@ -33,4 +33,4 @@ int nna_off();
 void nna_reset();
 int nna_wait_done(int event_mask, int event_value);
 
-#endif // NNA_COMMON_H
+#endif // NNA_HW_H
