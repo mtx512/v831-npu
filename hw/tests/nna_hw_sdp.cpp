@@ -23,13 +23,13 @@
 #include "nna_hw.h"
 #include "nna_interface.h"
 
-void naa_sdp_set_producer(uint32_t group_id, uint32_t rdma_group_id) {
+void nna_sdp_set_producer(uint32_t group_id, uint32_t rdma_group_id) {
 
   xregw(0x9004u, group_id);
   xregw(0x8004u, rdma_group_id);
 }
 
-void naa_sdp_enable(uint8_t enable_stats, uint8_t is_rdma_needed) {
+void nna_sdp_enable(uint8_t enable_stats, uint8_t is_rdma_needed) {
 
   if (enable_stats) {
     xregw(0x90dcu, 0x0f);
