@@ -31,9 +31,10 @@
 
 #include "nna_hw.h"
 #include "nna_interface.h"
+#include "nna_config.h"
 
 extern void nna_conv_set_producer(uint32_t group_id, uint32_t rdma_group_id);
-extern void nna_conv_enable(uint8_t enable_stats);
+extern void nna_conv_enable(uint8_t enable_stats, uint8_t is_rdma_needed);
 extern int nna_conv_program(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface);
 
 extern void nna_sdp_set_producer(uint32_t group_id, uint32_t rdma_group_id);
@@ -47,12 +48,57 @@ static MEM_CTRL input_d_mem;
 static MEM_CTRL output_d_mem;
 static MEM_CTRL weights_d_mem;
 
+uint16_t calculate_eps(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface) {
+
+  uint16_t eps = 0;
+  uint8_t bpe = 1; // Bytes per element
+  uint16_t memory_atomic_size = NNA_MEMORY_ATOMIC_SIZE;
+
+  uint16_t channel = conv_surface->src_data.channel;
+  uint16_t width = conv_surface->src_data.width;
+
+  // Calculation of elements per slice is dependentant on input format
+  if (conv_op->data_format == FORMAT_FEATURE) {
+    // Pad channel atomics to the next memory boundary and  divide by memory_atomic_size
+    uint16_t total_c_atomics = ((channel * bpe) + memory_atomic_size-1) >> 3 ;
+    eps = width * (total_c_atomics >> 2);
+    // For remainder channel atomics add additional width
+    switch ( total_c_atomics & 3) {
+      case 3:
+        eps += width;
+        break;
+      case 2:
+        eps += (width + 1) >> 1 ; // divide by 2
+        break;
+      case 1:
+        eps +=  ((width + 3 >= 0) ? width+3:width+6) >> 2; // divide by 4
+        break;
+      default:
+        break;
+      }
+  } else {
+    // Add implementation for pixel formats
+  }
+  return eps;
+}
+
+uint32_t calculate_data_bank(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface) {
+  // Data bank is 512 bytes
+  return (uint32_t)(conv_op->entry_per_slice * conv_surface->src_data.height +
+    NNA_CBUF_ENTRIES_PER_BANK-1) >> 9; // divide by 512 bytes
+}
+
+uint32_t calculate_weight_bank(nna_conv_surface_desc* conv_surface) {
+   // Weight bank is 16K
+   return ((conv_surface->weight_data.size & 0xFFFFFFE0) + 0x3FFF) >> 14; // divide by 16384 bytes
+}
+
 void nna_dc_143x79x8_3x3x8x16() {
 
   // Perform DC convolution using feature data as the input format (int8).
   // The input cube is 143x79x8 and weights consist of 16 kernels each a 3x3x8 cube.
   // The resulting output cube should be 141x77x16, however see comment below as
-  // output is split into 2 blocks.
+  // output is split into 2 blocks (channels per group).
   // This is a very basic test so no padding, stride, dilation, bias, relu, etc.
 
   nna_conv_op_desc conv_op;
@@ -78,6 +124,9 @@ void nna_dc_143x79x8_3x3x8x16() {
   int out_h = (in_h - k_h) + 1;
 
   int out_bytes = out_w * out_h * k;
+
+  // For int8 channelsPerGroup is atomic k
+  int channelsPerGroup = NNA_ATOMIC_K_SIZE;
 
   void* tmp_paddr;
   void* tmp_vaddr;
@@ -130,9 +179,9 @@ void nna_dc_143x79x8_3x3x8x16() {
   conv_surface.src_data.channel = in_c;
   conv_surface.src_data.address =  (uint32_t)(gp_paddr);
 
-  // For format feature input need to multiple by 8 (not completely sure why??)
-  conv_surface.src_data.line_stride = 8 * conv_surface.src_data.width;
-  conv_surface.src_data.surf_stride = conv_surface.src_data.height * 8 * conv_surface.src_data.width ;
+  // For format feature input need to multiple by channelsPerGroup
+  conv_surface.src_data.line_stride = channelsPerGroup * conv_surface.src_data.width;
+  conv_surface.src_data.surf_stride = conv_surface.src_data.height * channelsPerGroup * conv_surface.src_data.width ;
 
   conv_surface.weight_data.width = k_w;
   conv_surface.weight_data.height = k_h;
@@ -170,8 +219,8 @@ void nna_dc_143x79x8_3x3x8x16() {
   conv_op.input_width_cmac = conv_surface.dst_data.width;
   conv_op.input_height_cmac = conv_surface.dst_data.height;
 
-  // Entry per slice is a calculated value, add calculation as some point
-  entry_per_slice = 36;
+  // Calculate entries per slice
+  entry_per_slice = calculate_eps(&conv_op,&conv_surface);
 
   conv_op.entry_per_slice = entry_per_slice;
 
@@ -183,9 +232,8 @@ void nna_dc_143x79x8_3x3x8x16() {
 
   conv_surface.weight_data.size= weight_bytes;
 
-  // data bank is 512 bytes and weight bank is 16K
-  conv_op.data_bank = (uint32_t)(entry_per_slice * conv_surface.src_data.height + 511) >> 9; // divide by 512 bytes
-  conv_op.weight_bank = ((weight_bytes & 0xFFFFFFE0) + 0x3FFF) >> 14; // divide by 16384 bytes
+  conv_op.data_bank = calculate_data_bank(&conv_op,&conv_surface);
+  conv_op.weight_bank = calculate_weight_bank(&conv_surface);
 
   // for feature format we can leave release as zero
   conv_op.release = 0;
@@ -201,17 +249,15 @@ void nna_dc_143x79x8_3x3x8x16() {
   sdp_surface.src_data.width = out_w;
   sdp_surface.src_data.height = out_h;
   sdp_surface.src_data.channel = k;
-  // Need to multiply by 8 for feature format (not sure why ??)
-  sdp_surface.src_data.line_stride = 8 * sdp_surface.src_data.width;
-  sdp_surface.src_data.surf_stride = sdp_surface.src_data.height * 8 * sdp_surface.src_data.width;
+  sdp_surface.src_data.line_stride = channelsPerGroup * sdp_surface.src_data.width;
+  sdp_surface.src_data.surf_stride = sdp_surface.src_data.height * channelsPerGroup * sdp_surface.src_data.width;
 
   sdp_surface.dst_data.address = (uint32_t)(gp_paddr)+0x40000;
   sdp_surface.dst_data.width = out_w;
   sdp_surface.dst_data.height = out_h;
   sdp_surface.dst_data.channel = k;
-  // Need to multiply by 8 for feature format (not sure why ??)
-  sdp_surface.dst_data.line_stride = 8 * sdp_surface.dst_data.width;
-  sdp_surface.dst_data.surf_stride = sdp_surface.dst_data.height * 8 * sdp_surface.dst_data.width;
+  sdp_surface.dst_data.line_stride = channelsPerGroup * sdp_surface.dst_data.width;
+  sdp_surface.dst_data.surf_stride = sdp_surface.dst_data.height * channelsPerGroup * sdp_surface.dst_data.width;
 
   // Default to 1 as minimum
   sdp_op.out_cvt.scale=1;
@@ -227,7 +273,7 @@ void nna_dc_143x79x8_3x3x8x16() {
 
   nna_sdp_program(&sdp_op,&sdp_surface);
 
-  nna_conv_enable(0);
+  nna_conv_enable(0,0);
   nna_sdp_enable(0,1);
 
   nna_wait_done(0x150001,0x150001);
@@ -248,7 +294,7 @@ void nna_dc_143x79x8_3x3x8x16() {
 
   dma_loadout(((uint32_t)gp_paddr)+0x40000, out_bytes, (char*)output_d_mem.data_addr);
 
-  // Ouput seems to be processed as two blocks, each block is 141x77x8
+  // Ouput seems to be processed as two blocks (channelsPerGroup), each block is 141x77x8
   // Hence display 1st and last 4K blocks as the output is split into 2 group of 8 channels
   // Need to create a secondary test to verify if this output can be fed as feature data
   // to another DC convolution.

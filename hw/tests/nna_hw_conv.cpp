@@ -33,7 +33,7 @@ void nna_conv_set_producer(uint32_t group_id, uint32_t rdma_group_id) {
   xregw(0x3004u,group_id);  // CDMA_S_POINTER_0
 }
 
-void nna_conv_enable(int enable_stats) {
+void nna_conv_enable(uint8_t enable_stats, uint8_t is_rdma_needed) {
 
   // Wait for buffer to be flushed
   while ( !xregr(0x300Cu) );  // CDMA_S_CBUF_FLUSH_STATUS_0
