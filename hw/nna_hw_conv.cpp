@@ -18,6 +18,7 @@
 *
 */
 #include <sys/types.h>
+#include <stdint.h>
 
 #include "nna_hw.h"
 #include "nna_interface.h"

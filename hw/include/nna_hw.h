@@ -19,6 +19,7 @@
  */
 
 #ifndef NNA_HW_H
+#define NNA_NW_H
 
 enum nna_cmds { nna_cmd_on, nna_cmd_off, nna_cmd_reset, nna_cmd_clk };
 

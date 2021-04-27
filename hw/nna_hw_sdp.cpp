@@ -19,6 +19,7 @@
  */
 
 #include <sys/types.h>
+#include <stdint.h>
 
 #include "nna_hw.h"
 #include "nna_interface.h"
@@ -60,7 +61,7 @@ void processor_x1_program(nna_sdp_op_desc* sdp_op, nna_sdp_surface_desc* sdp_sur
 
   bypass =  !x1_op->enable;
   alu_bypass = (x1_op->type == SDP_OP_MUL) || (x1_op->type == SDP_OP_NONE);
-  mul_bypass = (x1_op->type == SDP_OP_ADD  || x1_op->type == SDP_OP_NONE);
+  mul_bypass = (x1_op->type == SDP_OP_ADD) || (x1_op->type == SDP_OP_NONE);
   alu_algo = x1_op->alu_type & 0x03;
   mul_prelu = x1_op->act == ACTIVATION_PRELU;
   relu_bypass =  !(x1_op->act == ACTIVATION_RELU);
@@ -83,16 +84,19 @@ void processor_x1_program(nna_sdp_op_desc* sdp_op, nna_sdp_surface_desc* sdp_sur
       xregw(0x9068u,x1_op->mul_operand); // SDP_D_DP_BS_MUL_SRC_VALUE_0
     } else {
       if (sdp_surface->x1_data.address) {
+        xregw(0x8028u, 0x1 << 5 | (x1_op->mode ==SDP_OP_PER_POINT) << 4 |
+          1 << 1);
         xregw(0x802Cu, sdp_surface->x1_data.address);     // SDP_RDMA_D_BS_BASE_ADDR_LOW_0
         xregw(0x8034u, sdp_surface->x1_data.line_stride);
         xregw(0x8038u, sdp_surface->x1_data.surf_stride);
         xregw(0x803Cu, 0);
       } else {
+        xregw(0x8028u, 1);
         xregw(0x802Cu, 0);
       }
     }
 
-    // Trucate value always takes effect
+    // Truncate value always takes effect
     xregw(0x9064u, alu_src | x1_op->truncate << 8); // SDP_D_DP_BS_MUL_CFG_0
   }
 }
@@ -164,10 +168,9 @@ void processor_y_program(nna_sdp_op_desc* sdp_op, nna_sdp_surface_desc* sdp_surf
   uint8_t mul_src;
 
 
-  y_op = &sdp_op->y_op;
+  // Not sure if y is present or not for small config, so will need to test
 
-  // Not sure if y is present or not for small config, so bypass until we can test it
-  y_op->enable = 0;
+  y_op = &sdp_op->y_op;
 
   bypass =  !y_op->enable;
   alu_bypass = (y_op->type == SDP_OP_MUL) || (y_op->type == SDP_OP_NONE);

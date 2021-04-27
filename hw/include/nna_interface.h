@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020  Jasbir Matharu, <jasknuj@gmail.com>
+ * Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
  *
  * This file is part of v381-nna.
  *
@@ -20,6 +21,8 @@
 
 #ifndef NNA_INTERFACE_H
 #define NA_INTERFACE_H
+
+#define KERNEL_PER_GROUP 8
 
 #define FORMAT_T_R8			             0
 #define FORMAT_FEATURE			        36
@@ -195,5 +198,52 @@ struct nna_sdp_op_desc {
   struct nna_sdp_op x2_op;
   struct nna_sdp_op y_op;
 };
+
+struct nna_pdp_surface_desc {
+
+	struct nna_data_cube src_data;
+	struct nna_data_cube dst_data;
+};
+
+#define POOL_MODE_AVG		0
+#define POOL_MODE_MAX		1
+#define POOL_MODE_MIN		2
+
+struct nna_pdp_op_desc {
+
+	uint8_t   split_num; // Default to 1
+
+	/* Algorithm parameters */
+	uint8_t  pool_mode; /* max,min,average */
+	uint8_t  pool_width; /*  width */
+	uint8_t  pool_height; /* height */
+
+	uint8_t  stride_x;
+	uint8_t  stride_y;
+
+	/**
+	 * The left/right/top/bottom padding size,
+	 */
+	uint8_t  pad_left;
+	uint8_t  pad_right;
+	uint8_t  pad_top;
+	uint8_t  pad_bottom;
+};
+
+void nna_conv_set_producer(uint32_t group_id, uint32_t rdma_group_id);
+void nna_conv_enable(uint8_t enable_stats, uint8_t is_rdma_needed);
+int nna_conv_program(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface);
+
+void nna_sdp_set_producer(uint32_t group_id, uint32_t rdma_group_id);
+void nna_sdp_enable(uint8_t enable_stats, uint8_t is_rdma_needed);
+int nna_sdp_program(nna_sdp_op_desc* sdp_op, nna_sdp_surface_desc* sdp_surface);
+
+void nna_pdp_set_producer(uint32_t group_id, uint32_t rdma_group_id);
+void nna_pdp_enable(uint8_t enable_stats, uint8_t is_rdma_needed);
+int nna_pdp_program(nna_pdp_op_desc* pdp_op, nna_pdp_surface_desc* pdp_surface);
+
+uint16_t calculate_eps(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface);
+uint32_t calculate_data_bank(nna_conv_op_desc* conv_op, nna_conv_surface_desc* conv_surface);
+uint32_t calculate_weight_bank(nna_conv_surface_desc* conv_surface);
 
 #endif // NNA_INTERFACE_H
