@@ -84,7 +84,7 @@ void processor_x1_program(nna_sdp_op_desc* sdp_op, nna_sdp_surface_desc* sdp_sur
       xregw(0x9068u,x1_op->mul_operand); // SDP_D_DP_BS_MUL_SRC_VALUE_0
     } else {
       if (sdp_surface->x1_data.address) {
-        xregw(0x8028u, 0x1 << 5 | (x1_op->mode ==SDP_OP_PER_POINT) << 4 |
+        xregw(0x8028u, 0x1 << 5 | (x1_op->mode ==SDP_OP_PER_POINT) << 4 | 1 << 3 |
           1 << 1);
         xregw(0x802Cu, sdp_surface->x1_data.address);     // SDP_RDMA_D_BS_BASE_ADDR_LOW_0
         xregw(0x8034u, sdp_surface->x1_data.line_stride);

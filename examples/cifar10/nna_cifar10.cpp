@@ -107,16 +107,16 @@ static void* gp_paddr;
 static int8_t image_data[8 * 32 * 32] = IMG_DATA;
 
 static int8_t conv1_nhwc_wt[3 * 5 * 5 * 32] = CONV1_WT;
-static int8_t conv1_bias[32] = CONV1_BIAS;
+static int16_t conv1_bias[32] = CONV1_BIAS;
 
 static int8_t conv2_nhwc_wt[16 * 5 * 5 * 32] = CONV2_WT;
-static int8_t conv2_bias[16] = CONV2_BIAS;
+static int16_t conv2_bias[16] = CONV2_BIAS;
 
 static int8_t conv3_nhwc_wt[16 * 5 * 5 * 32] = CONV3_WT;
-static int8_t conv3_bias[32] = CONV3_BIAS;
+static int16_t conv3_bias[32] = CONV3_BIAS;
 
 static int8_t conv4_nhwc_wt[32 * 4 * 4 * 10] = CONV4_WT;
-static int8_t conv4_bias[10] = CONV4_BIAS;
+static int16_t conv4_bias[10] = CONV4_BIAS;
 
 static int8_t scratch_buffer[65536];
 
@@ -407,6 +407,9 @@ void set_bias(int in_dim,
 
   sdp_op->x1_op.mode = SDP_OP_PER_KERNEL;
   sdp_surface->x1_data.address = (uint32_t)(gp_paddr)+bias_offset;
+  // Bias value is int16 so mutliple by 2
+  sdp_surface->x1_data.line_stride = sdp_surface->src_data.line_stride *2;
+  sdp_surface->x1_data.surf_stride = sdp_surface->src_data.height * channelsPerGroup * sdp_surface->src_data.width *2;
 
   // Bypass x2
   sdp_op->x2_op.enable = 0;
